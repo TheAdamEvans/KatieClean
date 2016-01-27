@@ -2,6 +2,15 @@ import numpy as np
 import pandas as pd
 import sys
 
+def rplcNA(s):
+    if s == '2':
+        s = 'NA'
+    elif s == '1':
+        s = 'YES'
+    elif s == '0':
+        s = 'NO'
+    return s
+
 def readForm(pathToData, csv_filename):
     import re
     import csv
@@ -90,6 +99,9 @@ def readForm(pathToData, csv_filename):
     # filter out blank responses
     blank = obs['resp'].isin([''])
     obs = obs[np.logical_not(blank)]
+
+    # replace 2 with NA, etc.
+    obs['resp'] = map(rplcNA, obs['resp'])
     
     return obs
 
