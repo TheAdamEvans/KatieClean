@@ -99,7 +99,7 @@ def get_route_name(soup):
 def get_box_data(soup):
     page_table = soup.find_all('table')
     for box_html in page_table:
-        if re.search("Submitted By:",box_html.encode('utf8')) != None:
+        if re.search("Submitted By:",box_html.encode('utf-8')) != None:
             break
 
     # soup.find(itemprop="itemreviewed")
@@ -114,11 +114,11 @@ def get_box_data(soup):
 
         # some rows like Forecast are bad
         permissable_datum = ['Location', 'Page Views', 'Administrators', 'Consensus', 'Submitted By', 'FA', 'Type', 'Elevation']
-        if i[0].encode('utf8') in permissable_datum:
+        if i[0].encode('utf-8') in permissable_datum:
 
-            if i[0].encode('utf8') != 'Consensus':
-                if re.search('^Forecast',i[0].encode('utf8')) == None:
-                    route_info[i[0].encode('utf8')] = i[1].encode('utf8')
+            if i[0].encode('utf-8') != 'Consensus':
+                if re.search('^Forecast',i[0].encode('utf-8')) == None:
+                    route_info[i[0].encode('utf-8')] = i[1].encode('utf-8')
             else:
                 grade = r.get_text()[12:]
                 for g in grade.split(u' '):
@@ -144,23 +144,148 @@ def get_route_info(page_id):
 
         box_data = get_box_data(soup)
 
+        detail = get_description(page_id)
+
         z = route_name.copy()
         z.update(box_data)
+        z.update(detail)
 
         return z
 
+
+def get_description(page_id):
+    
+    url = 'http://www.mountainproject.com/v/' + str(page_id)
+    
+    try:
+        mp_page = urllib2.urlopen(url)
+    except:
+        return None
+    else:
+        mp_html = mp_page.read()
+        soup = bs4.BeautifulSoup(mp_html, 'html.parser')
+
+        detail_text = {}
+        for cell in soup.find_all('h3', { 'class': "dkorange" }):
+            head = cell.get_text().replace(u'\xa0', '')
+            try:
+                body = cell.nextSibling.get_text()
+            except:
+                body = "ERROR"
+            finally:
+                detail_text[head] = body
+
+        return detail_text
+
+
+def print_dict(child_detail):
+    for datum in child_detail:
+        fd = open("data/"+datum,'a')
+        d = child_detail[datum].encode('utf-8', errors = 'ignore')
+        fd.write(d)
+        fd.close()
+
 def traverse(page_id):
     children = get_children(page_id)
-    print children
     for child in children:
         if get_children(child) != None:
             traverse(child) # RECURSION!!!
         else:
             for child in children:
-                print get_route_info(child)
+                child_detail = get_route_info(child)
+                if child_detail != None:
+                    print child_detail['Name']
+                    print_dict(child_detail)
             return child
 
-traverse(105833388)
-
-# get_route_info(107431192)
-
+traverse(106122297)
+# print "International"
+# traverse(105907743)
+# print "Alabama"
+# traverse(105905173)
+# print "Alaska"
+# traverse(105909311)
+# print "Arizona"
+# traverse(105708962)
+# print "Arkansas"
+# traverse(105901027)
+# print "California"
+# traverse(105708959)
+# print "Colorado"
+# traverse(105708956)
+# print "Connecticut"
+# traverse(105806977)
+# print "Delaware"
+# traverse(106861605)
+# print "Georgia"
+# traverse(105897947)
+# print "Hawaii"
+# traverse(106316122)
+# print "Idaho"
+# traverse(105708958)
+# print "Illinois"
+# traverse(105911816)
+# print "Iowa"
+# traverse(106092653)
+# print "Kansas"
+# traverse(107235316)
+# print "Kentucky"
+# traverse(105868674)
+# print "Maine"
+# traverse(105948977)
+# print "Maryland"
+# traverse(106029417)
+# print "Massachusetts"
+# traverse(105908062)
+# print "Michigan"
+# traverse(106113246)
+# print "Minnesota"
+# traverse(105812481)
+# print "Missouri"
+# traverse(105899020)
+# print "Montana"
+# traverse(105907492)
+# print "Nevada"
+# traverse(105708961)
+# print "New Hampshire"
+# traverse(105872225)
+# print "New Jersey"
+# traverse(106374428)
+# print "New Mexico"
+# traverse(105708964)
+# print "New York"
+# traverse(105800424)
+# print "North Carolina"
+# traverse(105873282)
+# print "Ohio"
+# traverse(105994953)
+# print "Oklahoma"
+# traverse(105854466)
+# print "Oregon"
+# traverse(105708965)
+# print "Pennsylvania"
+# traverse(105913279)
+# print "Rhode Island"
+# traverse(106842810)
+# print "South Carolina "
+# traverse(107638915)
+# print "South Dakota"
+# traverse(105708963)
+# print "Tennessee"
+# traverse(105887760)
+# print "Texas"
+# traverse(105835804)
+# print "Utah"
+# traverse(105708957)
+# print "Vermont"
+# traverse(105891603)
+# print "Virginia"
+# traverse(105852400)
+# print "Washington"
+# traverse(105708966)
+# print "West Virginia"
+# traverse(105855459)
+# print "Wisconsin"
+# traverse(105708968)
+# print "Wyoming"
+# traverse(105708960)
