@@ -5,25 +5,6 @@ import bs4
 import codecs
 import warnings
 
-
-def get_child_href(dest_iter):
-    
-    href = []
-    
-    for dest in dest_iter:
-        if len(dest.get_text()) > 0: # children are labeled with text
-            if dest.a != None: # sometimes <a> is within a <span>
-                dest = dest.a
-            h = dest.get('href')
-            h = h.encode('utf-8', errors = 'ignore') # encoding is crucial
-            href.append(h)
-    
-    # only routes and areas have an href containing /v/
-    href = [h for h in href if '/v/' in h]
-    
-    return href
-
-
 def get_children(href):
 
     try:
@@ -65,15 +46,22 @@ def get_children(href):
             else:
                 warnings.warn("NEITHER ROUTE NOR AREA " + href)
 
-
-def get_route_name(soup):
-
-    route_soup = soup.h1.get_text()
+def get_child_href(dest_iter):
     
-    route_name = route_soup.encode('utf-8' ,errors = 'ignore').strip()
-
-    return { 'Name': route_name }
-
+    href = []
+    
+    for dest in dest_iter:
+        if len(dest.get_text()) > 0: # children are labeled with text
+            if dest.a != None: # sometimes <a> is within a <span>
+                dest = dest.a
+            h = dest.get('href')
+            h = h.encode('utf-8', errors = 'ignore') # encoding is crucial
+            href.append(h)
+    
+    # only routes and areas have an href containing /v/
+    href = [h for h in href if '/v/' in h]
+    
+    return href
 
 def get_box_data(soup):
 
@@ -121,7 +109,8 @@ def get_box_data(soup):
                 # store data in same dict as above
                 for g in grade.split('  '):
                     h = g.split(split_char)
-                    box_data['Consensus-'+h[0]] = h[1]
+                    if len(h) > 1:
+                        box_data['Consensus-'+h[0]] = h[1]
 
     return box_data
 
@@ -134,18 +123,48 @@ def get_description(soup):
         # encode html to scan with regex
         h3_str = h3.get_text().encode('utf-8', errors = 'ignore')
 
-        # check if this table row one we want
+        # headers of info we want
         permissable_datum = ['Description', 'Getting There', 'Protection', 'Location']
-        perRE = re.compile("|".join(permissable_datum))
-        perMatch = perRE.search(h3_str)
 
-        if perMatch != None:
-            head = h3_str.strip('\xc2\xa0')
-            body = h3.next_sibling
-            detail_str = body.get_text().encode('utf-8', errors = 'ignore')
-            detail[head] = detail_str
+        # see which one matches
+        for head in permissable_datum:
+            perMatch = re.search(head, h3_str)
+            if perMatch != None:
+
+                # text is the element after the h3
+                body = h3.next_sibling
+
+                # save text
+                detail_str = body.get_text().encode('utf-8', errors = 'ignore')
+                detail[head] = detail_str.strip()
 
     return detail
+
+
+def get_route_name(soup):
+
+    route_soup = soup.h1.get_text()
+    
+    route_name = route_soup.encode('utf-8' ,errors = 'ignore')
+
+    route_name = route_name.strip('\xc2\xa0 ')
+
+    return { 'Name': route_name }
+
+
+def get_star_rating(soup):
+    
+    star_rating = {}
+    
+    meta = soup.find(id="starSummaryText").find_all('meta')
+    for m in meta:
+        head = m['itemprop']
+        head = head.encode('utf-8', errors = 'ignore')
+        body = m['content']
+        body = body.encode('utf-8', errors = 'ignore')
+        star_rating['Star-' + head] = float(m['content'])
+        
+    return star_rating
 
 
 def get_route_info(href):
@@ -169,6 +188,9 @@ def get_route_info(href):
         detail = get_description(soup)
         route_info.update(detail)
 
+        star_rating = get_star_rating(soup)
+        route_info.update(star_rating)
+
         return route_info
 
 
@@ -183,7 +205,6 @@ def print_dict(child_detail):
 def traverse(href):
 
     children = get_children(href)
-    print children
     for child in children:
         if get_children(child) != None:
 #            child_detail = get_route_info(child)
@@ -199,7 +220,9 @@ def traverse(href):
                     print_dict(child_detail)
             return child
 
-traverse('/v/fumin-canyon/106122297')
+#traverse('/v/105907743')
+
+print get_route_info('/v/108637906')
 
 # print "International"
 # traverse(105907743)
