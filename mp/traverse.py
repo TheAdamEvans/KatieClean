@@ -14,7 +14,8 @@ def get_child_href(dest_iter):
         if len(dest.get_text()) > 0: # children are labeled with text
             if dest.a != None: # sometimes <a> is within a <span>
                 dest = dest.a
-            h = dest.get('href').encode('utf-8', errors = 'ignore') # encoding is crucial
+            h = dest.get('href')
+            h = h.encode('utf-8', errors = 'ignore') # encoding is crucial
             href.append(h)
     
     # only routes and areas have an href containing /v/
@@ -67,41 +68,85 @@ def get_children(href):
 
 def get_route_name(soup):
 
-    route_name = soup.h1.get_text().replace(u'\xa0', '')
+    route_soup = soup.h1.get_text()
+    
+    route_name = route_soup.encode('utf-8' ,errors = 'ignore').strip()
+
     return { 'Name': route_name }
 
 
 def get_box_data(soup):
+
+    # find stats box in soup with regex
     page_table = soup.find_all('table')
-    for box_html in page_table:
-        if re.search("Submitted By:",box_html.encode('utf-8')) != None:
+    for box in page_table:
+        if re.search("Submitted By:",box.encode('utf-8')) != None: # questionable
             break
 
-    # soup.find(itemprop="itemreviewed")
-    # a = soup.find(id="starSummaryText").find_all('meta')
+    box_data = {}
 
-    route_info = {}
-    table_row = box_html.find_all('tr')
-    for r in table_row:
-        morsel = r.get_text()
-        morsel = morsel.replace('\n','')
-        i = morsel.split(u':\xa0')
+    for tr in box.find_all('tr'):
 
-        # some rows like Forecast are bad
+        # encode html to scan with regex
+        tr_str = tr.encode('utf-8', errors = 'ignore')
+
+        # UTF-8 characters that separate data
+        split_char = ':\xc2\xa0'
+
+        # check if this table row one we want
         permissable_datum = ['Location', 'Page Views', 'Administrators', 'Consensus', 'Submitted By', 'FA', 'Type', 'Elevation']
-        if i[0] in permissable_datum:
+        perRE = re.compile("|".join(permissable_datum))
+        perMatch = perRE.search(tr_str)
 
-            if i[0] != 'Consensus':
-                if re.search('^Forecast',i[0]) == None:
-                    route_info[i[0]] = i[1].encode('utf-8')
+        # if it is a permissable data row
+        if perMatch != None:
+            morsel = tr.get_text().encode('utf-8', errors = 'ignore')
+            i = morsel.split(split_char)
+            head = i[0].strip()
+            body = i[1].strip() 
+            
+            # body has junk in it like "\xc2\xa0View Map\xc2\xa0\xc2\xa0Incorrect?"
+
+            if head != 'Consensus':
+
+                # store data in dict
+                box_data[head] = body
+
             else:
-                grade = r.get_text()[12:]
-                for g in grade.split(u' '):
-                    h = g.split(u':\xa0')
-                    if len(h) > 1:
-                        route_info['Consensus-'+h[0]] = h[1].encode('utf-8')
 
-    return route_info
+                # grade requires two levels of parsing
+                grade = tr.get_text()[12:-10] # to chop off "Consensus: ... [details]"
+                grade = grade.encode('utf-8', errors = 'ignore')
+
+                # store data in same dict as above
+                for g in grade.split('  '):
+                    h = g.split(split_char)
+                    box_data['Consensus-'+h[0]] = h[1]
+
+    return box_data
+
+
+def get_description(soup):
+
+    detail = {}
+    for h3 in soup.find_all('h3', { 'class': "dkorange" }):
+
+        # encode html to scan with regex
+        h3_str = h3.get_text().encode('utf-8', errors = 'ignore')
+
+        # check if this table row one we want
+        permissable_datum = ['Description', 'Getting There', 'Protection', 'Location']
+        perRE = re.compile("|".join(permissable_datum))
+        perMatch = perRE.search(h3_str)
+
+        if perMatch != None:
+            head = h3_str.strip('\xc2\xa0')
+            body = h3.next_sibling
+            detail_str = body.get_text().encode('utf-8', errors = 'ignore')
+            detail[head] = detail_str
+
+    return detail
+
 
 def get_route_info(href):
     
@@ -113,38 +158,24 @@ def get_route_info(href):
         mp_html = mp_page.read()
         soup = bs4.BeautifulSoup(mp_html, 'html.parser')
         
+        route_info = {}
+
         route_name = get_route_name(soup)
+        route_info.update(route_name)
 
         box_data = get_box_data(soup)
+        route_info.update(box_data)
 
         detail = get_description(soup)
+        route_info.update(detail)
 
-        z = route_name.copy()
-        z.update(box_data)
-        z.update(detail)
-
-        return z
-
-
-def get_description(soup):
-    
-    detail_text = {}
-    for cell in soup.find_all('h3', { 'class': "dkorange" }):
-        head = cell.get_text().replace(u'\xa0', '')
-        try:
-            body = cell.nextSibling.get_text()
-        except:
-            body = "ERROR"
-        finally:
-            detail_text[head] = body
-
-    return detail_text
+        return route_info
 
 
 def print_dict(child_detail):
     for datum in child_detail:
         fd = codecs.open("data/"+datum,'a', 'utf-8')
-        d = child_detail[datum].decode('ascii', 'replace')
+        d = child_detail[datum].decode('utf-8', errors = 'ignore')
         fd.write(d)
         fd.close()
 
@@ -155,6 +186,10 @@ def traverse(href):
     print children
     for child in children:
         if get_children(child) != None:
+#            child_detail = get_route_info(child)
+#            if child_detail != None:
+#                print child_detail['Name']
+#                print_dict(child_detail)
             traverse(child) # RECURSION!!!
         else:
             for child in children:
@@ -164,7 +199,7 @@ def traverse(href):
                     print_dict(child_detail)
             return child
 
-traverse('/v/105708957')
+traverse('/v/fumin-canyon/106122297')
 
 # print "International"
 # traverse(105907743)
