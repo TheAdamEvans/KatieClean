@@ -1,94 +1,69 @@
 import re
-import json
 import urllib2
 import sys
 import bs4
+import codecs
+import warnings
 
-def parse_dest(html):
 
-    # finds a long digit
-    idRE = re.compile(r"1(\d)(\d)(\d)+")
-    if idRE.search(html) != None:
-        page_index = idRE.search(html).group(0)
-
-    # finds something in between >  <
-    # BAD *$&@%$*&% will breka this
-    labelRE = re.compile(r">[0-9A-z \'()-/]+<")
-    if labelRE.search(html) != None:
-        page_label = labelRE.search(html).group(0)
-        page_label = page_label[1:-1]
+def get_child_href(dest_iter):
     
-    if 'page_index' in locals() and 'page_label' in locals():
-        # url = 'http://www.mountainproject.com/v/' + page_index
-
-        # TODO package back should be JSON
-        return page_index, page_label #, url
-    else:
-        return None
-
-def find_dest_iter(page_id, mp_html):
-
-    soup = bs4.BeautifulSoup(mp_html, 'html.parser')
+    href = []
     
-    if page_id == '': # TODO move this to be the last case
-        dest_iter = [str(s) for s in soup.find_all('span') if re.search("destArea",str(s)) != None]
-    elif re.search("leftNavRoutes", mp_html) != None:
-        t = str(soup.find(id="leftNavRoutes"))
-        dest_iter = t.split("</td><td>")
-    elif re.search('leftnavfilternote(.*)',mp_html) != None: # TODO Use beautiful soup
-        nav_start = re.search('leftnavfilternote(.*)',mp_html).end()
-        nav_end = re.search('(.*)LeftNavDynamicContent',mp_html).start()
-        nav_html = mp_html[nav_start:nav_end]
-
-        # break out location rows
-        TRIM = 26
-        dest_iter = nav_html[TRIM:].split('<br/>')
-    else:
-        dest_iter = None
-    return dest_iter
-
-def get_children(page_id):
+    for dest in dest_iter:
+        if len(dest.get_text()) > 0: # children are labeled with text
+            if dest.a != None: # sometimes <a> is within a <span>
+                dest = dest.a
+            h = dest.get('href').encode('utf-8', errors = 'ignore') # encoding is crucial
+            href.append(h)
     
-    url = 'http://www.mountainproject.com/v/' + str(page_id)
+    # only routes and areas have an href containing /v/
+    href = [h for h in href if '/v/' in h]
     
+    return href
+
+
+def get_children(href):
+
     try:
-        mp_page = urllib2.urlopen(url)
+        mp_page = urllib2.urlopen('http://www.mountainproject.com' + href)
     except:
         return None
     else:
         mp_html = mp_page.read()
         soup = bs4.BeautifulSoup(mp_html, 'html.parser')
-        
-        website_tree = {}
 
-        y = soup.find(id="youContainer")
-        is_route = re.search('You & This Route',y.get_text()) != None
+        # every route and area page has this container
+        youContainer = soup.find(id="youContainer")
+        root = youContainer == None
 
-        if is_route:
-            return None
+        if root: # at /v/ or /destinations/
+            # get tags for the 50 states and International
+            dest_iter = soup.find_all('span', { 'class': "destArea" })
+
+            # pull out href key
+            children = get_child_href(dest_iter)
+
+            return children
         else:
-
-            dest_iter = find_dest_iter(page_id, mp_html)
             
-            if dest_iter != None:
-                for dest in dest_iter:
-                    features = parse_dest(dest)
+            is_route = re.search('You & This Route',youContainer.get_text()) != None
+            is_area = re.search('You & This Area',youContainer.get_text()) != None
 
-                    if features != None:
-                        page_index, page_label = features
-                        # print page_label + " " + page_index
-                        data = { 'page_id':page_index, 'label':page_label }
-                        website_tree[page_index] = data
-                    else: # some bullshit
-                        if re.search('leftnav',dest) == None: 
-                            print dest # see if labelRE is missing anything
-        
-            c = { 'pageID':page_id }
-            c['children_info'] = website_tree
-            route_list = [c['children_info'][route]['page_id'] for route in c['children_info']]
-            c['children'] = route_list
+            if is_route:
+                return None
+            elif is_area:
+                # get div for any area or route
+                leftnavdiv = soup.find(id='viewerLeftNavColContent')
+                dest_iter = leftnavdiv.find_all('a')
 
-            return route_list
+                # pull out href key
+                children = get_child_href(dest_iter)
+
+                return children
+            else:
+                warnings.warn("NEITHER ROUTE NOR AREA " + href)
+
 
 def get_route_name(soup):
 
@@ -114,26 +89,24 @@ def get_box_data(soup):
 
         # some rows like Forecast are bad
         permissable_datum = ['Location', 'Page Views', 'Administrators', 'Consensus', 'Submitted By', 'FA', 'Type', 'Elevation']
-        if i[0].encode('utf-8') in permissable_datum:
+        if i[0] in permissable_datum:
 
-            if i[0].encode('utf-8') != 'Consensus':
-                if re.search('^Forecast',i[0].encode('utf-8')) == None:
-                    route_info[i[0].encode('utf-8')] = i[1].encode('utf-8')
+            if i[0] != 'Consensus':
+                if re.search('^Forecast',i[0]) == None:
+                    route_info[i[0]] = i[1].encode('utf-8')
             else:
                 grade = r.get_text()[12:]
                 for g in grade.split(u' '):
                     h = g.split(u':\xa0')
                     if len(h) > 1:
-                        route_info['Consensus-'+str(h[0])] = str(h[1])
+                        route_info['Consensus-'+h[0]] = h[1].encode('utf-8')
 
     return route_info
 
-def get_route_info(page_id):
-    
-    url = 'http://www.mountainproject.com/v/' + str(page_id)
+def get_route_info(href):
     
     try:
-        mp_page = urllib2.urlopen(url)
+        mp_page = urllib2.urlopen('http://www.mountainproject.com' + href)
     except:
         return None
     else:
@@ -144,7 +117,7 @@ def get_route_info(page_id):
 
         box_data = get_box_data(soup)
 
-        detail = get_description(page_id)
+        detail = get_description(soup)
 
         z = route_name.copy()
         z.update(box_data)
@@ -153,40 +126,33 @@ def get_route_info(page_id):
         return z
 
 
-def get_description(page_id):
+def get_description(soup):
     
-    url = 'http://www.mountainproject.com/v/' + str(page_id)
-    
-    try:
-        mp_page = urllib2.urlopen(url)
-    except:
-        return None
-    else:
-        mp_html = mp_page.read()
-        soup = bs4.BeautifulSoup(mp_html, 'html.parser')
+    detail_text = {}
+    for cell in soup.find_all('h3', { 'class': "dkorange" }):
+        head = cell.get_text().replace(u'\xa0', '')
+        try:
+            body = cell.nextSibling.get_text()
+        except:
+            body = "ERROR"
+        finally:
+            detail_text[head] = body
 
-        detail_text = {}
-        for cell in soup.find_all('h3', { 'class': "dkorange" }):
-            head = cell.get_text().replace(u'\xa0', '')
-            try:
-                body = cell.nextSibling.get_text()
-            except:
-                body = "ERROR"
-            finally:
-                detail_text[head] = body
-
-        return detail_text
+    return detail_text
 
 
 def print_dict(child_detail):
     for datum in child_detail:
-        fd = open("data/"+datum,'a')
-        d = child_detail[datum].encode('utf-8', errors = 'ignore')
+        fd = codecs.open("data/"+datum,'a', 'utf-8')
+        d = child_detail[datum].decode('ascii', 'replace')
         fd.write(d)
         fd.close()
 
-def traverse(page_id):
-    children = get_children(page_id)
+
+def traverse(href):
+
+    children = get_children(href)
+    print children
     for child in children:
         if get_children(child) != None:
             traverse(child) # RECURSION!!!
@@ -198,7 +164,8 @@ def traverse(page_id):
                     print_dict(child_detail)
             return child
 
-traverse(106122297)
+traverse('/v/105708957')
+
 # print "International"
 # traverse(105907743)
 # print "Alabama"
