@@ -262,4 +262,4 @@ def traverse(href):
                     print_dict(child_detail)
             return child
 
-traverse('/v/')
+traverse('/v/international/105907743')
