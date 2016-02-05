@@ -5,6 +5,7 @@ import bs4
 import codecs
 import warnings
 
+
 def get_children(href):
 
     try:
@@ -46,6 +47,7 @@ def get_children(href):
             else:
                 warnings.warn("NEITHER ROUTE NOR AREA " + href)
 
+
 def get_child_href(dest_iter):
     
     href = []
@@ -62,6 +64,7 @@ def get_child_href(dest_iter):
     href = [h for h in href if '/v/' in h]
     
     return href
+
 
 def get_box_data(soup):
 
@@ -82,7 +85,7 @@ def get_box_data(soup):
         split_char = ':\xc2\xa0'
 
         # check if this table row one we want
-        permissable_datum = ['Location', 'Page Views', 'Administrators', 'Consensus', 'Submitted By', 'FA', 'Type', 'Elevation']
+        permissable_datum = ['Location', 'Page Views', 'Administrators', 'Submitted By', 'FA', 'Type', 'Elevation']
         perRE = re.compile("|".join(permissable_datum))
         perMatch = perRE.search(tr_str)
 
@@ -94,25 +97,22 @@ def get_box_data(soup):
             body = i[1].strip() 
             
             # body has junk in it like "\xc2\xa0View Map\xc2\xa0\xc2\xa0Incorrect?"
-
-            if head != 'Consensus':
-
-                # store data in dict
-                box_data[head] = body
-
-            else:
-
-                # grade requires two levels of parsing
-                grade = tr.get_text()[12:-10] # to chop off "Consensus: ... [details]"
-                grade = grade.encode('utf-8', errors = 'ignore')
-
-                # store data in same dict as above
-                for g in grade.split('  '):
-                    h = g.split(split_char)
-                    if len(h) > 1:
-                        box_data['Consensus-'+h[0]] = h[1]
+            # store data in dict
+            box_data[head] = body
 
     return box_data
+
+
+def get_protect_rate(grade_table):
+    
+    # finds ratings like PG13, R, X
+    # destroys the grade spans and looks for text
+    while grade_table.span != None:
+        grade_table.span.decompose()
+    protect_rate = grade_table.getText()
+    protect_rate = protect_rate.encode('utf8', errors = 'ignore').strip()
+    
+    return protect_rate
 
 
 def get_description(soup):
@@ -162,9 +162,52 @@ def get_star_rating(soup):
         head = head.encode('utf-8', errors = 'ignore')
         body = m['content']
         body = body.encode('utf-8', errors = 'ignore')
-        star_rating['Star-' + head] = float(m['content'])
+        star_rating['star' + head] = body
         
     return star_rating
+
+
+def get_grade(soup):
+
+    # up there with with route name
+    grade_table = soup.h3
+
+    grade = []
+
+    for s in grade_table.find_all('span'):
+
+        # class names are the grading systems
+        if s['class'] != None:
+            head = s['class'][0]
+            head = head.encode('utf8', errors = 'strict')
+
+            # grade are showing with text
+            body = s.get_text()
+            body = body.encode('utf8', errors = 'ignore')
+
+            grade.append(body)
+
+    # get protection aka scary rating
+    if grade_table != None:
+        while grade_table.span != None:
+            grade_table.span.decompose()
+        protect_rate = grade_table.getText()
+        protect_rate = protect_rate.encode('utf8', errors = 'ignore').strip()
+    else:
+        protect_rate = ''
+
+    # format grade adding protection rating
+    grade = [(s + " " + protect_rate).strip() for s in grade]
+
+    grade_data = {}
+    
+    # extract tbe grades
+    for g in grade:
+        h = g.split(':\xc2\xa0')
+        if len(h) > 1:
+            grade_data['rate'+h[0].strip()] = h[1]
+
+    return grade_data
 
 
 def get_route_info(href):
@@ -177,20 +220,19 @@ def get_route_info(href):
         mp_html = mp_page.read()
         soup = bs4.BeautifulSoup(mp_html, 'html.parser')
         
-        route_info = {}
-
         route_name = get_route_name(soup)
-        route_info.update(route_name)
-
         box_data = get_box_data(soup)
-        route_info.update(box_data)
-
-        detail = get_description(soup)
-        route_info.update(detail)
-
         star_rating = get_star_rating(soup)
+        detail = get_description(soup)
+        grade = get_grade(soup)
+        
+        route_info = {}
+        route_info.update(route_name)
+        route_info.update(box_data)        
         route_info.update(star_rating)
-
+        route_info.update(detail)
+        route_info.update(grade)
+        
         return route_info
 
 
@@ -203,114 +245,21 @@ def print_dict(child_detail):
 
 
 def traverse(href):
-
+    print href
     children = get_children(href)
     for child in children:
         if get_children(child) != None:
-#            child_detail = get_route_info(child)
-#            if child_detail != None:
-#                print child_detail['Name']
-#                print_dict(child_detail)
-            traverse(child) # RECURSION!!!
+
+            # recursively deeper into the rabbit hole
+            traverse(child)
         else:
             for child in children:
+
+                # print data from route
                 child_detail = get_route_info(child)
                 if child_detail != None:
                     print child_detail['Name']
                     print_dict(child_detail)
             return child
 
-#traverse('/v/105907743')
-
-print get_route_info('/v/108637906')
-
-# print "International"
-# traverse(105907743)
-# print "Alabama"
-# traverse(105905173)
-# print "Alaska"
-# traverse(105909311)
-# print "Arizona"
-# traverse(105708962)
-# print "Arkansas"
-# traverse(105901027)
-# print "California"
-# traverse(105708959)
-# print "Colorado"
-# traverse(105708956)
-# print "Connecticut"
-# traverse(105806977)
-# print "Delaware"
-# traverse(106861605)
-# print "Georgia"
-# traverse(105897947)
-# print "Hawaii"
-# traverse(106316122)
-# print "Idaho"
-# traverse(105708958)
-# print "Illinois"
-# traverse(105911816)
-# print "Iowa"
-# traverse(106092653)
-# print "Kansas"
-# traverse(107235316)
-# print "Kentucky"
-# traverse(105868674)
-# print "Maine"
-# traverse(105948977)
-# print "Maryland"
-# traverse(106029417)
-# print "Massachusetts"
-# traverse(105908062)
-# print "Michigan"
-# traverse(106113246)
-# print "Minnesota"
-# traverse(105812481)
-# print "Missouri"
-# traverse(105899020)
-# print "Montana"
-# traverse(105907492)
-# print "Nevada"
-# traverse(105708961)
-# print "New Hampshire"
-# traverse(105872225)
-# print "New Jersey"
-# traverse(106374428)
-# print "New Mexico"
-# traverse(105708964)
-# print "New York"
-# traverse(105800424)
-# print "North Carolina"
-# traverse(105873282)
-# print "Ohio"
-# traverse(105994953)
-# print "Oklahoma"
-# traverse(105854466)
-# print "Oregon"
-# traverse(105708965)
-# print "Pennsylvania"
-# traverse(105913279)
-# print "Rhode Island"
-# traverse(106842810)
-# print "South Carolina "
-# traverse(107638915)
-# print "South Dakota"
-# traverse(105708963)
-# print "Tennessee"
-# traverse(105887760)
-# print "Texas"
-# traverse(105835804)
-# print "Utah"
-# traverse(105708957)
-# print "Vermont"
-# traverse(105891603)
-# print "Virginia"
-# traverse(105852400)
-# print "Washington"
-# traverse(105708966)
-# print "West Virginia"
-# traverse(105855459)
-# print "Wisconsin"
-# traverse(105708968)
-# print "Wyoming"
-# traverse(105708960)
+traverse('/v/')
