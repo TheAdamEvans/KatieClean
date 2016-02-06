@@ -241,6 +241,7 @@ def print_dict(child_detail):
         fd = codecs.open("data/"+datum,'a', 'utf-8')
         d = child_detail[datum].decode('utf-8', errors = 'ignore')
         fd.write(d)
+        fd.write("\n\n")
         fd.close()
 
 
@@ -262,4 +263,4 @@ def traverse(href):
                     print_dict(child_detail)
             return child
 
-traverse('/v/international/105907743')
+traverse('/v/')
