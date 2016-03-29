@@ -1,64 +1,62 @@
+import sys
+import re
+import csv
+import itertools
 import numpy as np
 import pandas as pd
-import sys
+
+qRE = re.compile(r'^[a-z][a-z]\d\d_')
+tsLineRE = re.compile(r'form_.*_timestamp')
 
 def rplcNA(s):
     if s == '2':
-        s = 'NA'
+        return 'NA'
     elif s == '1':
-        s = 'YES'
+        return 'YES'
     elif s == '0':
-        s = 'NO'
-    return s
+        return 'NO'
+    else:
+        return s
 
 def readForm(pathToData, csv_filename):
-    import re
-    import csv
-    import itertools
-    
+    """
+    Read in CSV file with denormalized data
+    Clean and normalize
+    Return obs in a DataFrame
+    """
+
     obs = pd.DataFrame()
 
-    weekIndex = 0
+    week = 0
     mentor = 0
     
     # open and transpose data
     ogData = itertools.izip(*csv.reader(open(pathToData+csv_filename, "rU")))
     
-    # drop the extension
+    # drop the csv extension
     if re.search('.csv$', csv_filename) != None:
         fn = csv_filename[:re.search('.csv$', csv_filename).start()] 
     else:
         fn = csv_filename
-        
-    # pattern matching with regular expressions
-    qRE = re.compile('^[a-z][a-z]\d\d_')
-    tsLineRE = re.compile('form_.*_timestamp')
 
-
-
+    # iterate through records
     for i, entry in enumerate(ogData):
 
         # first entry in the row has branching information in it
         qt = entry[0]
+        resp = entry[2:]
 
         # if there is an incomplete week stop reading the data
         if tsLineRE.search(qt) != None:
-            if set(entry[1:])=={''}: 
-                break 
+            if set(resp)=={''}: 
+                break
 
-        # survey level information
-        if re.match('.*survey_identifier.*',qt) != None:
-            surveyIdentifier = entry[1:]
-        elif re.match('.*record_id.*',qt) != None or re.match('.*staffid.*',qt) != None:
-            staffID = entry[1:]
-            
         # this is the week beginning
         # increment and reset counters
-        elif tsLineRE.search(qt) != None:
-            weekIndex = weekIndex + 1
+        if tsLineRE.search(qt) != None:
+            week = week + 1
             mentor = 0
-            ts = entry[1:]
-            print 'Reading ' + fn + ' Week ' + str(weekIndex)
+            print 'Reading ' + fn + ' Week ' + str(week)
         
         # matching a question
         elif qRE.match(qt) != None:
@@ -76,24 +74,19 @@ def readForm(pathToData, csv_filename):
             else:
                 mentor = 0
                 
-            # record responses
-            resp = entry[1:]
-            
             # how many columns are there
-            WID = len(staffID)
+            WID = len(resp)
             
-
             # append new data row
             newEvent = zip(
                 itertools.repeat(str(fn),WID),
-                ts,
-                staffID,
-                itertools.repeat(int(weekIndex),WID),
+                itertools.repeat(int(week),WID),
                 itertools.repeat(int(mentor),WID),
                 itertools.repeat(str(qCode),WID),
                 resp
                 )
-            obsDF = pd.DataFrame.from_records(newEvent, columns = ['fn', 'ts','staffID','weekIndex', 'mentor', 'qCode', 'resp'])
+            header = ['fn','week', 'mentor', 'qCode', 'resp']
+            obsDF = pd.DataFrame.from_records(newEvent, columns = header)
             obs = obs.append(obsDF)
     
     # filter out blank responses
@@ -105,18 +98,30 @@ def readForm(pathToData, csv_filename):
     
     return obs
 
+def main():
+    """
+    Loop read / clean function over all files
+    Concatenate and print all observations
+    """
 
-pathToData = sys.argv[1] # TODO check this path
-filename = sys.argv[2:]
+    # can pass multiple files
+    pathToData = sys.argv[1]
+    filename = sys.argv[2:]
 
-# normalize data
-obs = pd.DataFrame()
-for fn in filename:
-    print pathToData + fn
-    this_study = readForm(pathToData, fn)
-    obs = this_study.append(obs)
+    # clean data files
+    collect = []
+    for fn in filename:
+        print pathToData + fn
+        this_study = readForm(pathToData, fn)
+        collect.append(this_study)
 
-# print all data
-obs.to_csv(pathToData+'obs.csv', index = False)
+    # concatenate dataframes
+    obs = pd.concat(collect)
+
+    # print normalized data
+    obs.to_csv(pathToData+'obs.csv', index = False)
+
+if __name__ == '__main__':
+    main()
 
 # python cleaner.py './' AG.csv AI.csv CI.csv CG.csv
